@@ -4,39 +4,68 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in · Upgrade Timers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#12141a; --panel:#1b1e27; --line:#2e3342; --text:#e8e9ee; --muted:#9298aa; --gold:#f2c14e; --danger:#ff7a7a; }
+  :root {
+    --grass-1: #4f9a31; --grass-2: #2f6a1f; --grass-3: #214d16;
+    --wood: #8a5427; --wood-l: #b5753d; --wood-d: #4b2a12;
+    --parch: #fbf1d8; --parch-2: #f1e2bd; --parch-3: #e5d09f; --line: #d3b980;
+    --ink: #3b2614; --ink-soft: #7d6347; --gold: #ffd23f; --green: #8fdc41; --red-d: #a92a17;
+    --display: 'Lilita One', 'Arial Rounded MT Bold', system-ui, sans-serif;
+    --body: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --outline: -1.5px -1.5px 0 var(--wood-d), 1.5px -1.5px 0 var(--wood-d), -1.5px 1.5px 0 var(--wood-d), 1.5px 1.5px 0 var(--wood-d), 0 3px 0 var(--wood-d);
+  }
   * { box-sizing: border-box; }
+  html { background: var(--grass-3); }
   body {
-    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
-    background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; color: var(--ink); font: 600 15px/1.45 var(--body);
+    background:
+      radial-gradient(ellipse 900px 420px at 50% -120px, #c8f08a55, transparent 70%),
+      radial-gradient(circle at 20% 30%, #ffffff0a 0 2px, transparent 3px) 0 0 / 46px 46px,
+      linear-gradient(180deg, var(--grass-1), var(--grass-2) 55%, var(--grass-3));
   }
-  form { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
-  h1 { margin: 0 0 18px; font-size: 20px; }
-  h1 span { color: var(--gold); }
-  label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 5px; }
+  form {
+    width: 100%; max-width: 360px; overflow: hidden;
+    background: linear-gradient(180deg, var(--parch), var(--parch-2)); border: 4px solid var(--wood-d); border-radius: 20px;
+    box-shadow: inset 0 0 0 3px var(--parch-3), 0 8px 0 #0000004d;
+  }
+  .banner {
+    margin: 0; padding: 14px 20px; text-align: center; font: 400 28px/1.1 var(--display); letter-spacing: .5px; color: #fff; text-shadow: var(--outline);
+    background: repeating-linear-gradient(90deg, #ffffff0d 0 2px, transparent 2px 64px), linear-gradient(180deg, var(--wood-l), var(--wood));
+    border-bottom: 4px solid var(--wood-d);
+  }
+  .banner b { font-weight: 400; color: var(--gold); }
+  .body { padding: 18px 22px 22px; }
+  label { display: block; font: 400 15px var(--display); color: var(--wood); letter-spacing: .3px; margin: 10px 0 5px; }
   input {
-    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; font: inherit;
+    width: 100%; font: 700 15px var(--body); color: var(--ink); background: #fffdf6;
+    border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; box-shadow: inset 0 2px 0 #0000000d;
   }
-  input:focus { outline: none; border-color: var(--gold); }
+  input:focus { outline: 3px solid var(--gold); outline-offset: 1px; }
   button {
-    width: 100%; margin-top: 20px; padding: 10px; border-radius: 8px; border: 1px solid var(--gold);
-    background: var(--gold); color: #1a1406; font: inherit; font-weight: 650; cursor: pointer;
+    width: 100%; margin-top: 22px; padding: 10px 14px 11px; cursor: pointer;
+    font: 400 20px/1 var(--display); letter-spacing: .5px; color: #fff; text-shadow: var(--outline);
+    background: linear-gradient(180deg, #d9ffa6, var(--green) 45%, #4fa61c);
+    border: 3px solid var(--wood-d); border-radius: 14px; box-shadow: inset 0 2px 0 #ffffff8c, 0 5px 0 var(--wood-d);
   }
-  button:disabled { opacity: .6; cursor: wait; }
-  .err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 10px; }
+  button:active { transform: translateY(4px); box-shadow: inset 0 2px 0 #ffffff8c, 0 1px 0 var(--wood-d); }
+  button:disabled { filter: grayscale(.5); cursor: wait; }
+  .err { color: var(--red-d); font-weight: 800; font-size: 13px; min-height: 18px; margin-top: 12px; text-align: center; }
 </style>
 </head>
 <body>
 <form id="f" autocomplete="on">
-  <h1>Village <span>Upgrade Timers</span></h1>
-  <label for="u">Username</label>
-  <input id="u" name="username" autocomplete="username" autocapitalize="none" autofocus required>
-  <label for="p">Password</label>
-  <input id="p" name="password" type="password" autocomplete="current-password" required>
-  <button id="b">Sign in</button>
-  <div class="err" id="err"></div>
+  <h1 class="banner">Upgrade <b>Timers</b></h1>
+  <div class="body">
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button id="b">Sign in</button>
+    <div class="err" id="err" role="alert"></div>
+  </div>
 </form>
 <script>
 document.getElementById('f').addEventListener('submit', async e => {

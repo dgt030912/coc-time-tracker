@@ -44,8 +44,12 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-IP=$(curl -s -H 'Metadata-Flavor: Google' \
+IP=$(curl -sf -H 'Metadata-Flavor: Google' \
   http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Could not read the VM's external IP (got: '$IP'); leaving Caddy config unchanged" >&2
+  exit 1
+fi
 HOST="${IP//./-}.sslip.io"
 cat > /etc/caddy/Caddyfile <<EOF
 ${HOST} {

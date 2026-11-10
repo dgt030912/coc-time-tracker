@@ -23,7 +23,6 @@ import secrets
 import sys
 import threading
 import time
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
@@ -33,7 +32,7 @@ HOST = os.environ.get('HOST', '127.0.0.1')
 PORT = int(os.environ.get('PORT', '8080'))
 COOKIE_SECURE = os.environ.get('COOKIE_SECURE', '1') == '1'
 SESSION_SECONDS = 30 * 86400
-MAX_BODY = 2_000_000
+MAX_BODY = 8_000_000  # a village PUT carries the whole export as an escaped string
 PBKDF2_ITER = 300_000
 LOGIN_WINDOW, LOGIN_MAX_FAILS = 15 * 60, 10
 USERNAME_RE = re.compile(r'^[a-z0-9_.-]{1,32}$')
@@ -48,19 +47,32 @@ def data_path(*parts):
 
 
 def read_json(p, default):
+    """Missing file -> default. A corrupted file is moved aside (kept for recovery) and treated as
+    missing, so one bad file can't take the whole site down."""
     try:
         with open(p) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, type(default)) else default
     except FileNotFoundError:
+        return default
+    except (ValueError, OSError) as e:
+        bad = f'{p}.corrupt-{int(time.time())}'
+        try:
+            os.replace(p, bad)
+        except OSError:
+            pass
+        sys.stderr.write(f'WARNING: unreadable {p} ({e}); moved to {bad}\n')
         return default
 
 
 def write_json(p, obj):
     os.makedirs(os.path.dirname(p), mode=0o700, exist_ok=True)
-    tmp = f'{p}.{os.getpid()}.tmp'
+    tmp = f'{p}.{os.getpid()}.{threading.get_ident()}.tmp'
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as f:
         json.dump(obj, f)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, p)
 
 
@@ -98,6 +110,10 @@ def add_user(name, password):
         users = read_json(data_path('users.json'), {})
         users[user] = {'display': name.strip(), 'salt': salt, 'hash': hash_password(password, salt)}
         write_json(data_path('users.json'), users)
+        sessions = read_json(data_path('sessions.json'), {})
+        kept = {k: v for k, v in sessions.items() if v.get('user') != user}
+        if len(kept) != len(sessions):
+            write_json(data_path('sessions.json'), kept)
     print(f'Saved user {user!r} in {DATA_DIR}')
 
 
@@ -139,11 +155,29 @@ def end_session(token):
             write_json(data_path('sessions.json'), sessions)
 
 
-def too_many_fails(ip):
+fails_lock = threading.Lock()
+
+
+def note_attempt(ip):
+    """Records a login attempt and says whether this IP is over the limit. Counting happens before the
+    password check so parallel requests can't slip past it; a success removes the attempt again."""
     t = time.time()
-    recent = [x for x in login_fails.get(ip, []) if t - x < LOGIN_WINDOW]
-    login_fails[ip] = recent
-    return len(recent) >= LOGIN_MAX_FAILS
+    with fails_lock:
+        if len(login_fails) > 10_000:  # forget stale IPs
+            for k in [k for k, v in login_fails.items() if not v or t - v[-1] > LOGIN_WINDOW]:
+                del login_fails[k]
+        recent = [x for x in login_fails.get(ip, []) if t - x < LOGIN_WINDOW]
+        blocked = len(recent) >= LOGIN_MAX_FAILS
+        if not blocked:
+            recent.append(t)
+        login_fails[ip] = recent
+        return blocked
+
+
+def forget_attempt(ip):
+    with fails_lock:
+        if login_fails.get(ip):
+            login_fails[ip].pop()
 
 
 # ---------- HTTP ----------
@@ -159,8 +193,11 @@ class Handler(BaseHTTPRequestHandler):
         return fwd.split(',')[-1].strip() if fwd else self.client_address[0]
 
     def token(self):
-        c = SimpleCookie(self.headers.get('Cookie', ''))
-        return c['session'].value if 'session' in c else None
+        for part in self.headers.get('Cookie', '').split(';'):
+            k, _, v = part.strip().partition('=')
+            if k == 'session' and v:
+                return v
+        return None
 
     def user(self):
         return session_user(self.token())
@@ -194,12 +231,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, f.read(), 'text/html; charset=utf-8')
 
     def body(self):
-        n = int(self.headers.get('Content-Length') or 0)
-        if n > MAX_BODY:
-            raise ValueError('Request too large')
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            raise ValueError('Bad Content-Length')
+        if n < 0 or n > MAX_BODY:
+            raise ValueError('Request too large' if n > 0 else 'Bad Content-Length')
         if 'application/json' not in self.headers.get('Content-Type', ''):
             raise ValueError('Expected JSON')  # also blocks cross-site form posts
-        return json.loads(self.rfile.read(n) or b'null')
+        data = json.loads(self.rfile.read(n) or b'{}')
+        if not isinstance(data, dict):
+            raise ValueError('Expected a JSON object')
+        return data
 
     def route(self):
         parts = [unquote(p) for p in urlsplit(self.path).path.split('/') if p]
@@ -210,9 +253,28 @@ class Handler(BaseHTTPRequestHandler):
         return {'Set-Cookie': f'session={value}; {flags}'}
 
     # -- methods --
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def guarded(fn):
+        def run(self):
+            try:
+                fn(self)
+            except Exception as e:  # never drop the connection without an answer
+                sys.stderr.write(f'ERROR {self.command} {urlsplit(self.path).path}: {e!r}\n')
+                try:
+                    self.err(500, 'Server error')
+                except Exception:
+                    pass
+        return run
+
     def do_HEAD(self):
         self.do_GET()
 
+    @guarded
     def do_GET(self):
         p = self.route()
         user = self.user()
@@ -235,19 +297,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'user': user, 'display': users.get(user, {}).get('display', user)})
         self.err(404, 'Not found')
 
+    @guarded
     def do_POST(self):
         p = self.route()
         try:
             if p == ['api', 'login']:
                 ip = self.client_ip()
-                if too_many_fails(ip):
+                b = self.body()
+                if note_attempt(ip):
                     return self.err(429, 'Too many attempts. Try again in a few minutes.')
-                b = self.body() or {}
                 user = check_password(str(b.get('username', '')), str(b.get('password', '')))
                 if not user:
-                    login_fails.setdefault(ip, []).append(time.time())
                     return self.err(401, 'Wrong username or password')
-                login_fails.pop(ip, None)
+                forget_attempt(ip)
                 return self.send(200, {'ok': True}, headers=self.cookie(new_session(user), SESSION_SECONDS))
             if p == ['api', 'logout']:
                 if self.token():
@@ -269,17 +331,25 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(res, tuple):
                     return self.err(*res)
                 write_json(user_file(user), d)
-            self.send(200, {'ok': True})
+            self.send(200, {'ok': True, **(res or {})})
         except ValueError as e:
             self.err(400, str(e))
 
+    @guarded
     def do_PUT(self):
         p = self.route()
         if len(p) == 3 and p[:2] == ['api', 'villages']:
             def put_village(d, v):
-                if not isinstance(v, dict) or v.get('tag') != p[2]:
+                if v.get('tag') != p[2]:
                     return (400, 'Village tag does not match')
+                cur = d['villages'].get(p[2])
+                # Every save says which revision it was based on; if another device saved since, refuse
+                # (409) and let the client reload before changing anything.
+                if cur is not None and (v.get('rev') or 0) != cur.get('rev', 0):
+                    return (409, 'Changed on another device')
+                v['rev'] = (cur or {}).get('rev', 0) + 1
                 d['villages'][p[2]] = v
+                return {'rev': v['rev']}
             return self.mutate(put_village)
         if len(p) == 3 and p[:2] == ['api', 'names']:
             def put_name(d, b):
@@ -290,12 +360,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.mutate(put_name)
         self.err(404, 'Not found')
 
+    @guarded
     def do_DELETE(self):
         p = self.route()
         if len(p) == 3 and p[:2] == ['api', 'villages']:
-            return self.mutate(lambda d, _: d['villages'].pop(p[2], None) and None)
+            return self.mutate(lambda d, _: (d['villages'].pop(p[2], None), None)[1])
         if len(p) == 3 and p[:2] == ['api', 'names']:
-            return self.mutate(lambda d, _: d['names'].pop(p[2], None) and None)
+            return self.mutate(lambda d, _: (d['names'].pop(p[2], None), None)[1])
         self.err(404, 'Not found')
 
 
