@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Village Upgrade Timers</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1b1e27;
+    --panel-2: #232733;
+    --line: #2e3342;
+    --text: #e8e9ee;
+    --muted: #9298aa;
+    --gold: #f2c14e;
+    --builder: #f2a14e;
+    --lab: #6aa9ff;
+    --pet: #c58cff;
+    --bb: #59c9a5;
+    --done: #5fd38a;
+    --danger: #ff7a7a;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  h1 span { color: var(--gold); }
+  h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .warn { color: var(--danger); }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  textarea {
+    width: 100%; min-height: 160px; resize: vertical; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: 12px/1.4 ui-monospace, Menlo, monospace;
+  }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { border-color: #4a5168; }
+  button.primary { background: var(--gold); color: #1a1406; border-color: var(--gold); font-weight: 600; }
+  button.ghost { background: transparent; }
+  button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  button.x { padding: 2px 8px; color: var(--muted); background: transparent; border: none; font-size: 16px; }
+  button.x:hover { color: var(--danger); }
+  select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+    font: inherit; font-size: 13px; color-scheme: dark;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
+
+  /* village tabs */
+  .vtabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; }
+  .vtab {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 130px;
+    border-radius: 10px; padding: 8px 12px; border-left: 3px solid var(--c, var(--line)); text-align: left;
+  }
+  .vtab .t { font-weight: 600; font-size: 14px; }
+  .vtab .s { font-size: 11px; color: var(--muted); }
+  .vtab.on { background: var(--panel); border-color: var(--gold); border-left-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--gold) inset; }
+
+  /* summary */
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; border-top: 3px solid var(--c); }
+  .card.click { cursor: pointer; }
+  .card.click:hover { border-color: #4a5168; border-top-color: var(--c); }
+  .card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .card .big { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .card .sub { font-size: 12px; color: var(--muted); }
+
+  .vhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .vhead .t { font-size: 18px; font-weight: 650; }
+  .vhead .t small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+
+  /* boosts */
+  .boost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .bcol { background: var(--panel-2); border-radius: 10px; padding: 12px; border-left: 3px solid var(--c); }
+  .bcol h3 { margin: 0 0 8px; font-size: 14px; }
+  .win { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .win:first-of-type { border-top: none; }
+  .win .name { font-weight: 600; }
+  .st { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .st.on { color: var(--done); }
+  .win input[type=datetime-local] {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px;
+    color-scheme: dark;
+  }
+  .empty { color: var(--muted); font-size: 13px; padding: 4px 0 8px; }
+  .adds { margin-top: 8px; }
+
+  /* modifiers */
+  .mods { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  label.tog { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 14px; }
+  label.tog input { accent-color: var(--gold); width: 16px; height: 16px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+  /* timers */
+  .controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+  .chip.on { background: var(--gold); color: #1a1406; border-color: var(--gold); font-weight: 600; }
+  .ctl label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .group-h {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 18px 0 2px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c); font-weight: 650;
+  }
+  .group-h:first-child { margin-top: 0; }
+  .group-h .meta { font-weight: 400; }
+  .timer {
+    display: grid; grid-template-columns: 4px 1fr auto; gap: 0 14px; align-items: center;
+    padding: 12px 0; border-top: 1px solid var(--line);
+  }
+  .group-h + .timer { border-top: none; }
+  .timer .bar { align-self: stretch; border-radius: 4px; background: var(--c); }
+  .timer .nm { font-weight: 600; cursor: pointer; }
+  .timer .nm:hover { text-decoration: underline dotted; }
+  .timer .info { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.q { color: var(--c); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+  .badge.v { color: var(--text); background: color-mix(in srgb, var(--vc) 22%, transparent); border-color: color-mix(in srgb, var(--vc) 55%, transparent); }
+  .badge.boost { color: var(--done); border-color: color-mix(in srgb, var(--done) 45%, transparent); }
+  .timer .right { text-align: right; }
+  .timer .cd { font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .timer .fin { font-size: 12px; color: var(--muted); }
+  .timer.done .cd { color: var(--done); }
+
+  /* planner */
+  .plan { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .plan input[type=number] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; }
+  .plan-out { margin-top: 10px; font-size: 14px; }
+  .plan-out b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: var(--panel-2); border: 1px solid var(--done); color: var(--text); padding: 10px 16px; border-radius: 10px;
+    font-size: 14px; transition: .2s; max-width: calc(100% - 32px); z-index: 10;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.bad { border-color: var(--danger); }
+  @media (max-width: 560px) {
+    .timer { grid-template-columns: 4px 1fr; }
+    .timer .right { grid-column: 2; text-align: left; margin-top: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="wrap">
+  <header>
+    <h1>Village <span>Upgrade Timers</span></h1>
+    <div class="row">
+      <span class="meta" id="meta"></span>
+      <button class="ghost" id="repaste" hidden>Paste export</button>
+    </div>
+  </header>
+
+  <section class="panel" id="pastePanel">
+    <h2>Paste village export</h2>
+    <textarea id="raw" placeholder='{"tag":"#...","timestamp":...,"buildings":[...]}' spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="loadBtn">Load export</button>
+      <button class="ghost" id="cancelPaste" hidden>Cancel</button>
+      <span class="meta">Each export is matched to its village by player tag. A new tag adds a village; a known tag updates it.</span>
+    </div>
+    <div class="err" id="err"></div>
+  </section>
+
+  <div id="app" hidden>
+    <div class="vtabs" id="vtabs"></div>
+    <div id="vhead"></div>
+    <div class="summary" id="summary"></div>
+
+    <div id="villageOnly">
+      <section class="panel">
+        <h2>Speed boosts (1 hour each)</h2>
+        <div class="boost-grid" id="boosts"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Duration cuts for this village</h2>
+        <div class="mods" id="mods"></div>
+        <div class="hint">The game bakes these into an upgrade when it starts, so by default they only affect the planner. Turn on “apply to current timers” only if your export timers turn out to be undiscounted.</div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2 id="timersTitle">Upgrades in progress</h2>
+      <div class="controls">
+        <div class="chips" id="chips"></div>
+        <div class="row ctl">
+          <span id="groupCtl"><label for="groupBy">Group</label>
+            <select id="groupBy">
+              <option value="none">None</option>
+              <option value="village">By village</option>
+              <option value="queue">By queue</option>
+            </select></span>
+          <span><label for="sortBy">Sort</label>
+            <select id="sortBy">
+              <option value="soonest">Finishing soonest</option>
+              <option value="latest">Finishing latest</option>
+              <option value="recent">Most recent export</option>
+              <option value="village">Village name</option>
+              <option value="name">Upgrade name</option>
+            </select></span>
+        </div>
+      </div>
+      <div id="timers"></div>
+    </section>
+
+    <section class="panel" id="plannerPanel">
+      <h2>Planner: when would a new upgrade finish?</h2>
+      <div class="plan">
+        <select id="pq">
+          <option value="builder">Builder</option>
+          <option value="lab">Laboratory</option>
+          <option value="pet">Pet House</option>
+        </select>
+        <span>base time</span>
+        <input type="number" id="pd" min="0" value="0"> d
+        <input type="number" id="ph" min="0" value="0"> h
+        <input type="number" id="pm" min="0" value="0"> m
+        <span class="meta">starting now</span>
+      </div>
+      <div class="plan-out" id="planOut"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const HOUR = 3600;
+const MULT = { potion: 10, byte: 4, lab_potion: 24, pet_potion: 24 };
+const KIND_LABEL = { potion: 'Builder Potion', byte: 'Builder Byte', both: 'Potion + Byte', lab_potion: 'Research Potion', pet_potion: 'Pet Potion' };
+const QUEUES = {
+  builder:    { label: 'Builders',     color: 'var(--builder)' },
+  lab:        { label: 'Laboratory',   color: 'var(--lab)' },
+  pet:        { label: 'Pet House',    color: 'var(--pet)' },
+  bb_builder: { label: 'Builder Base', color: 'var(--bb)' },
+  bb_lab:     { label: 'Star Lab',     color: 'var(--bb)' },
+  other:      { label: 'Other',        color: 'var(--muted)' },
+};
+const HOME_QUEUES = ['builder', 'lab', 'pet'];
+const SECTION_QUEUE = {
+  buildings: 'builder', traps: 'builder', heroes: 'builder',
+  buildings2: 'bb_builder', traps2: 'bb_builder', heroes2: 'bb_builder',
+  units: 'lab', spells: 'lab', siege_machines: 'lab',
+  units2: 'bb_lab', pets: 'pet',
+};
+const VILLAGE_COLORS = ['#f2c14e', '#6ad3ff', '#ff8fb1', '#9be36a', '#c58cff', '#ffb36a', '#6affd5', '#ff7a7a'];
+
+// Best-known names for data IDs. Anything wrong or missing can be renamed by clicking it.
+const NAMES = {
+  1000000:'Army Camp',1000001:'Town Hall',1000002:'Elixir Collector',1000003:'Elixir Storage',1000004:'Gold Mine',
+  1000005:'Gold Storage',1000006:'Barracks',1000007:'Laboratory',1000008:'Cannon',1000009:'Archer Tower',1000010:'Wall',
+  1000011:'Wizard Tower',1000012:'Air Defense',1000013:'Mortar',1000014:'Clan Castle',1000015:"Builder's Hut",
+  1000019:'Hidden Tesla',1000020:'Spell Factory',1000021:'X-Bow',1000023:'Dark Elixir Drill',1000024:'Dark Elixir Storage',
+  1000026:'Dark Barracks',1000027:'Inferno Tower',1000028:'Air Sweeper',1000029:'Dark Spell Factory',1000031:'Eagle Artillery',
+  1000032:'Bomb Tower',1000059:'Workshop',1000067:'Scattershot',
+  28000000:'Barbarian King',28000001:'Archer Queen',28000002:'Grand Warden',28000003:'Battle Machine',
+  28000004:'Royal Champion',28000005:'Battle Copter',28000006:'Minion Prince',28000007:'Dragon Duke',
+  26000000:'Lightning Spell',26000001:'Healing Spell',26000002:'Rage Spell',26000003:'Jump Spell',26000005:'Freeze Spell',
+  26000009:'Poison Spell',26000010:'Earthquake Spell',26000011:'Haste Spell',26000016:'Clone Spell',26000017:'Skeleton Spell',
+  26000028:'Bat Spell',26000035:'Invisibility Spell',26000053:'Recall Spell',26000070:'Overgrowth Spell',26000098:'Revive Spell',
+  4000000:'Barbarian',4000001:'Archer',4000002:'Goblin',4000003:'Giant',4000004:'Wall Breaker',4000005:'Balloon',
+  4000006:'Wizard',4000007:'Healer',4000008:'Dragon',4000009:'P.E.K.K.A',4000010:'Minion',4000011:'Hog Rider',
+  4000012:'Valkyrie',4000013:'Golem',4000015:'Witch',4000017:'Lava Hound',4000022:'Bowler',4000023:'Baby Dragon',
+  4000024:'Miner',4000051:'Wall Wrecker',4000052:'Battle Blimp',4000053:'Yeti',4000058:'Ice Golem',4000059:'Electro Dragon',
+  4000062:'Stone Slammer',4000065:'Dragon Rider',4000075:'Siege Barracks',4000082:'Headhunter',4000087:'Log Launcher',
+  4000091:'Flame Flinger',4000092:'Battle Drill',4000095:'Electro Titan',4000097:'Apprentice Warden',
+  73000000:'L.A.S.S.I',73000001:'Electro Owl',73000002:'Mighty Yak',73000003:'Unicorn',73000004:'Phoenix',
+  73000007:'Poison Lizard',73000008:'Diggy',73000009:'Frosty',73000010:'Spirit Fox',73000011:'Angry Jelly',
+  73000016:'Sneezy',73000017:'Greedy Raven',
+};
+
+const $ = id => document.getElementById(id);
+const now = () => Date.now() / 1000;
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+// ---------- state ----------
+// state.villages[tag] = { tag, nick, raw, boosts[], exportKinds{}, mods{}, color, updatedAt }
+const STORE_KEY = 'coc-timers-v2';
+const DEFAULT_MODS = { wb: false, hj: false, gp: false, applyCurrent: false };
+let state = loadState();
+const parsed = {}; // tag -> parsed export (cache)
+
+function loadState() {
+  const base = { villages: {}, names: {}, view: 'all', filter: 'all', groupBy: 'none', sort: 'soonest' };
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s) return { ...base, ...s };
+    // migrate the single-village version
+    const old = JSON.parse(localStorage.getItem('coc-timers-v1'));
+    if (old && old.raw) {
+      const tag = JSON.parse(old.raw).tag || 'unknown';
+      base.villages[tag] = {
+        tag, nick: '', raw: old.raw, boosts: old.boosts || [], exportKinds: old.exportKinds || {},
+        mods: { ...DEFAULT_MODS, ...(old.mods || {}) }, color: VILLAGE_COLORS[0], updatedAt: Date.now() / 1000,
+      };
+      base.names = old.names || {};
+    }
+  } catch (e) {}
+  return base;
+}
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }
+
+const villages = () => Object.values(state.villages);
+const vname = v => v.nick || v.tag;
+function P(v) { return parsed[v.tag] || (parsed[v.tag] = parseExport(v.raw)); }
+
+// ---------- parsing ----------
+function parseExport(raw) {
+  const obj = JSON.parse(raw);
+  if (typeof obj !== 'object' || !obj || Array.isArray(obj)) throw new Error('Not a JSON object');
+  const ts = Number(obj.timestamp) || Math.floor(now());
+  const tasks = [];
+  for (const [section, arr] of Object.entries(obj)) {
+    if (!Array.isArray(arr)) continue;
+    arr.forEach((it, idx) => {
+      if (!it || typeof it !== 'object' || !(it.timer > 0)) return;
+      tasks.push({
+        key: `${section}:${it.data}:${it.lvl}:${idx}`,
+        nameKey: `${section}:${it.data}`,
+        section, id: it.data, lvl: it.lvl, timer: it.timer,
+        queue: SECTION_QUEUE[section] || 'other',
+        extra: !!it.extra,
+      });
+    });
+  }
+  return { tag: obj.tag || 'unknown', ts, tasks, boosts: obj.boosts || {}, hasTs: !!obj.timestamp };
+}
+
+// Boosts listed in the export: value = seconds left on a boost that is running.
+function exportWindows(v) {
+  const d = P(v), out = [];
+  for (const [k, left] of Object.entries(d.boosts)) {
+    if (!(left > 0)) continue;
+    const q = /builder/i.test(k) ? 'builder' : /lab|research/i.test(k) ? 'lab' : /pet/i.test(k) ? 'pet' : null;
+    if (!q) continue;
+    const kind = v.exportKinds[k] || (q === 'builder' ? 'potion' : q === 'lab' ? 'lab_potion' : 'pet_potion');
+    const end = d.ts + left, start = end - HOUR;
+    const kinds = kind === 'both' ? ['potion', 'byte'] : [kind];
+    out.push({ fromExport: k, queue: q, kind, start, end, mult: kinds.reduce((a, x) => a + MULT[x], 0) });
+  }
+  return out;
+}
+
+function windowsFor(v, q) {
+  const user = v.boosts.filter(b => b.queue === q).map(b => ({ ...b, end: b.start + HOUR, mult: MULT[b.kind] }));
+  return exportWindows(v).filter(w => w.queue === q).concat(user);
+}
+
+// Rate at time t = sum of active multipliers (potion 10 + byte 4 = 14), else 1.
+function finishTime(v, work, t0, q) {
+  const wins = HOME_QUEUES.includes(q) ? windowsFor(v, q) : [];
+  const pts = [...new Set(wins.flatMap(w => [w.start, w.end]))].filter(p => p > t0).sort((a, b) => a - b);
+  let t = t0, W = work;
+  for (let i = 0; i <= pts.length; i++) {
+    const next = i < pts.length ? pts[i] : Infinity;
+    const mid = next === Infinity ? t + 1 : (t + next) / 2;
+    const active = wins.filter(w => w.start <= mid && mid < w.end);
+    const r = active.length ? active.reduce((a, w) => a + w.mult, 0) : 1;
+    const cap = (next - t) * r;
+    if (W <= cap) return t + W / r;
+    W -= cap; t = next;
+  }
+  return t;
+}
+
+function cutFactor(v, q) {
+  const m = v.mods;
+  if (!HOME_QUEUES.includes(q)) return 1;
+  let f = 1;
+  if (m.wb) f *= 0.5;
+  if (m.hj && q === 'builder') f *= 0.5;
+  if (m.gp) f *= 0.8;
+  return f;
+}
+
+// ---------- formatting ----------
+function fmtDur(s) {
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  if (d) return `${d}d ${h}h ${m}m`;
+  if (h) return `${h}h ${m}m ${String(sec).padStart(2, '0')}s`;
+  if (m) return `${m}m ${String(sec).padStart(2, '0')}s`;
+  return `${sec}s`;
+}
+function fmtAgo(s) {
+  s = Math.max(0, s);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m ago`;
+  return `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h ago`;
+}
+function fmtWhen(t) {
+  const d = new Date(t * 1000), today = new Date();
+  const tmrw = new Date(today); tmrw.setDate(today.getDate() + 1);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === tmrw.toDateString()) return `Tomorrow ${time}`;
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' + time;
+}
+function toLocalInput(t) {
+  const d = new Date(t * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+const nameOf = task => state.names[task.nameKey] || NAMES[task.id] || `${task.section} #${task.id}`;
+
+// ---------- computed timers ----------
+function tasksFor(v) {
+  const d = P(v);
+  return d.tasks.map(t => {
+    const work = v.mods.applyCurrent ? t.timer * cutFactor(v, t.queue) : t.timer;
+    const fin = finishTime(v, work, d.ts, t.queue);
+    return { ...t, v, fin, saved: d.ts + t.timer - fin };
+  });
+}
+function allTasks() {
+  const list = state.view === 'all' ? villages() : [state.villages[state.view]].filter(Boolean);
+  return list.flatMap(tasksFor);
+}
+
+function sortTasks(list) {
+  const by = {
+    soonest: (a, b) => a.fin - b.fin,
+    latest: (a, b) => b.fin - a.fin,
+    recent: (a, b) => P(b.v).ts - P(a.v).ts || a.fin - b.fin,
+    village: (a, b) => vname(a.v).localeCompare(vname(b.v)) || a.fin - b.fin,
+    name: (a, b) => nameOf(a).localeCompare(nameOf(b)) || a.fin - b.fin,
+  }[state.sort] || ((a, b) => a.fin - b.fin);
+  return list.slice().sort(by);
+}
+
+// ---------- render ----------
+function renderHeader() {
+  const vs = villages();
+  $('meta').textContent = vs.length ? `${vs.length} village${vs.length > 1 ? 's' : ''} · ⌘V anywhere to paste an export` : '';
+  $('repaste').hidden = !vs.length;
+}
+
+function villageNext(v) {
+  const t = now();
+  const running = tasksFor(v).filter(x => x.fin > t).sort((a, b) => a.fin - b.fin);
+  return { running, next: running[0] };
+}
+
+function renderTabs() {
+  const vs = villages();
+  const tab = (id, title, sub, color) =>
+    `<button class="vtab ${state.view === id ? 'on' : ''}" data-view="${esc(id)}" ${color ? `style="--c:${color}"` : ''}>
+      <span class="t">${esc(title)}</span><span class="s">${sub}</span></button>`;
+  const allRunning = vs.reduce((n, v) => n + villageNext(v).running.length, 0);
+  $('vtabs').innerHTML = tab('all', 'All villages', `${allRunning} running`) +
+    vs.map(v => tab(v.tag, vname(v), `export ${fmtAgo(now() - P(v).ts)}`, v.color)).join('');
+}
+
+function renderVillageHead() {
+  if (state.view === 'all') { $('vhead').innerHTML = ''; return; }
+  const v = state.villages[state.view], d = P(v), age = now() - d.ts;
+  $('vhead').innerHTML = `<div class="vhead">
+    <div class="t">${esc(vname(v))}${v.nick ? `<small>${esc(v.tag)}</small>` : ''}</div>
+    <div class="row">
+      <span class="meta">exported ${fmtWhen(d.ts)} (${fmtAgo(age)})${age > 86400 ? ' <span class="warn">· stale</span>' : ''}${d.hasTs ? '' : ' <span class="warn">· no timestamp in export</span>'}</span>
+      <button class="ghost" data-nick="${esc(v.tag)}">Rename</button>
+      <button class="ghost danger" data-remove="${esc(v.tag)}">Remove</button>
+    </div></div>`;
+}
+
+function renderSummary() {
+  const t = now();
+  if (state.view === 'all') {
+    // one card per village
+    $('summary').innerHTML = villages().map(v => {
+      const { running, next } = villageNext(v);
+      return `<div class="card click" data-view="${esc(v.tag)}" style="--c:${v.color}">
+        <div class="lbl">${esc(vname(v))}</div>
+        <div class="big" data-cd="${next ? next.fin : ''}" data-done="All done">${next ? fmtDur(next.fin - t) : 'All done'}</div>
+        <div class="sub">${next ? `next: ${esc(nameOf(next))} · ${running.length} running` : 'nothing running'} · export ${fmtAgo(t - P(v).ts)}</div>
+      </div>`;
+    }).join('');
+    return;
+  }
+  const v = state.villages[state.view], tasks = tasksFor(v);
+  $('summary').innerHTML = HOME_QUEUES.concat(['bb_builder', 'bb_lab']).map(q => {
+    const list = tasks.filter(x => x.queue === q);
+    if (!list.length && !HOME_QUEUES.includes(q)) return '';
+    const running = list.filter(x => x.fin > t).sort((a, b) => a.fin - b.fin), next = running[0];
+    return `<div class="card" style="--c:${QUEUES[q].color}">
+      <div class="lbl">${QUEUES[q].label}</div>
+      <div class="big" data-cd="${next ? next.fin : ''}" data-done="Done">${next ? fmtDur(next.fin - t) : (list.length ? 'All done' : 'Idle')}</div>
+      <div class="sub">${next ? `next: ${esc(nameOf(next))} · ${running.length} running` : (list.length ? `${list.length} ready to collect` : 'nothing upgrading')}</div>
+    </div>`;
+  }).join('');
+}
+
+function windowStatus(w) {
+  const t = now();
+  if (t < w.start) return `<span class="st">starts in ${fmtDur(w.start - t)}</span>`;
+  if (t < w.end) return `<span class="st on">active · ${fmtDur(w.end - t)} left</span>`;
+  return `<span class="st">ended</span>`;
+}
+
+function renderBoosts(v) {
+  $('boosts').innerHTML = HOME_QUEUES.map(q => {
+    const rows = [];
+    exportWindows(v).filter(w => w.queue === q).forEach(w => {
+      const opts = q === 'builder'
+        ? ['potion', 'byte', 'both'].map(k => `<option value="${k}" ${w.kind === k ? 'selected' : ''}>${KIND_LABEL[k]} (${k === 'both' ? 14 : MULT[k]}×)</option>`).join('')
+        : `<option>${KIND_LABEL[w.kind]} (${MULT[w.kind]}×)</option>`;
+      rows.push(`<div class="win"><span class="name">From export</span>
+        <select data-exp="${esc(w.fromExport)}" ${q === 'builder' ? '' : 'disabled'}>${opts}</select>
+        ${windowStatus(w)}</div>`);
+    });
+    v.boosts.filter(b => b.queue === q).forEach(b => rows.push(`<div class="win">
+      <span class="name">${KIND_LABEL[b.kind]} <span class="st">${MULT[b.kind]}×</span></span>
+      <input type="datetime-local" step="60" value="${toLocalInput(b.start)}" data-start="${b.id}">
+      ${windowStatus({ start: b.start, end: b.start + HOUR })}
+      <button class="x" data-del="${b.id}" title="Remove">×</button></div>`));
+    const adds = q === 'builder'
+      ? `<button data-add="potion" data-q="builder">+ Builder Potion</button><button data-add="byte" data-q="builder">+ Builder Byte</button>`
+      : q === 'lab' ? `<button data-add="lab_potion" data-q="lab">+ Research Potion</button>`
+      : `<button data-add="pet_potion" data-q="pet">+ Pet Potion</button>`;
+    return `<div class="bcol" style="--c:${QUEUES[q].color}">
+      <h3>${QUEUES[q].label}</h3>
+      ${rows.length ? rows.join('') : '<div class="empty">No boost running.</div>'}
+      <div class="row adds">${adds}</div></div>`;
+  }).join('');
+}
+
+function renderMods(v) {
+  const m = v.mods;
+  const tog = (k, label) => `<label class="tog"><input type="checkbox" data-mod="${k}" ${m[k] ? 'checked' : ''}> ${label}</label>`;
+  $('mods').innerHTML =
+    tog('wb', 'Welcome Back (−50% builder, lab, pets)') +
+    tog('hj', 'Hammer Jam (−50% builder)') +
+    tog('gp', 'Gold Pass (−20% builder, lab, pets)') +
+    tog('applyCurrent', '<span class="meta">Apply to current timers</span>');
+}
+
+function renderChips(tasks) {
+  const present = ['all', ...Object.keys(QUEUES).filter(q => tasks.some(t => t.queue === q))];
+  if (!present.includes(state.filter)) state.filter = 'all';
+  $('chips').innerHTML = present.map(q => {
+    const n = q === 'all' ? tasks.length : tasks.filter(t => t.queue === q).length;
+    return `<button class="chip ${state.filter === q ? 'on' : ''}" data-filter="${q}">${q === 'all' ? 'All' : QUEUES[q].label} · ${n}</button>`;
+  }).join('');
+}
+
+function timerRow(x, showVillage) {
+  const t = now(), done = x.fin <= t;
+  const badges = [];
+  if (showVillage) badges.push(`<span class="badge v" style="--vc:${x.v.color}">${esc(vname(x.v))}</span>`);
+  badges.push(`<span class="badge q" style="--c:${QUEUES[x.queue].color}">${QUEUES[x.queue].label}</span>`);
+  if (x.extra) badges.push(`<span class="badge" title="Marked extra:true in the export, likely a goblin builder/researcher slot">extra slot</span>`);
+  if (x.saved > 30) badges.push(`<span class="badge boost">−${fmtDur(x.saved)} from boosts${x.v.mods.applyCurrent ? '/cuts' : ''}</span>`);
+  return `<div class="timer ${done ? 'done' : ''}" style="--c:${showVillage ? x.v.color : QUEUES[x.queue].color}">
+    <div class="bar"></div>
+    <div>
+      <div class="nm" data-rename="${esc(x.nameKey)}" title="Click to rename">${esc(nameOf(x))}</div>
+      <div class="info">Lvl ${x.lvl} → ${x.lvl + 1} ${badges.join('')}</div>
+    </div>
+    <div class="right">
+      <div class="cd" data-cd="${x.fin}" data-done="Ready">${done ? 'Ready' : fmtDur(x.fin - t)}</div>
+      <div class="fin">${done ? 'finished ' : ''}${fmtWhen(x.fin)}</div>
+    </div></div>`;
+}
+
+function renderTimers(tasks) {
+  const multi = state.view === 'all' && villages().length > 1;
+  let list = state.filter === 'all' ? tasks : tasks.filter(t => t.queue === state.filter);
+  list = sortTasks(list);
+  if (!list.length) { $('timers').innerHTML = '<div class="empty">Nothing upgrading.</div>'; return; }
+
+  const group = state.view === 'all' ? state.groupBy : (state.groupBy === 'queue' ? 'queue' : 'none');
+  if (group === 'none') { $('timers').innerHTML = list.map(x => timerRow(x, multi)).join(''); return; }
+
+  // build groups, preserving the sorted order inside each
+  const groups = new Map();
+  for (const x of list) {
+    const k = group === 'village' ? x.v.tag : x.queue;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(x);
+  }
+  let keys = [...groups.keys()];
+  if (group === 'village') {
+    const vt = k => state.villages[k];
+    if (state.sort === 'recent') keys.sort((a, b) => P(vt(b)).ts - P(vt(a)).ts);
+    else if (state.sort === 'village') keys.sort((a, b) => vname(vt(a)).localeCompare(vname(vt(b))));
+    // otherwise groups follow the order of their first (best-sorted) task
+  } else {
+    keys.sort((a, b) => Object.keys(QUEUES).indexOf(a) - Object.keys(QUEUES).indexOf(b));
+  }
+  $('timers').innerHTML = keys.map(k => {
+    const items = groups.get(k);
+    let head;
+    if (group === 'village') {
+      const v = state.villages[k];
+      head = `<div class="group-h" style="--c:${v.color}">${esc(vname(v))}
+        <span class="meta">${items.length} upgrade${items.length > 1 ? 's' : ''} · export ${fmtAgo(now() - P(v).ts)}</span></div>`;
+    } else {
+      head = `<div class="group-h" style="--c:${QUEUES[k].color}">${QUEUES[k].label}<span class="meta">${items.length}</span></div>`;
+    }
+    return head + items.map(x => timerRow(x, multi && group !== 'village')).join('');
+  }).join('');
+}
+
+function renderPlanner() {
+  if (state.view === 'all') return;
+  const v = state.villages[state.view], q = $('pq').value;
+  const base = (+$('pd').value || 0) * 86400 + (+$('ph').value || 0) * 3600 + (+$('pm').value || 0) * 60;
+  if (!base) { $('planOut').innerHTML = '<span class="meta">Enter the upgrade’s base time from the game or wiki.</span>'; return; }
+  const f = cutFactor(v, q), work = base * f, t = now();
+  const fin = finishTime(v, work, t, q);
+  $('planOut').innerHTML =
+    `After cuts: <b>${fmtDur(work)}</b> (×${+f.toFixed(3)}) · with boosts finishes in <b>${fmtDur(fin - t)}</b> · <b>${fmtWhen(fin)}</b>`;
+}
+
+function render() {
+  renderHeader();
+  const vs = villages();
+  $('app').hidden = !vs.length;
+  if (!vs.length) { showPaste(true); return; }
+  if (state.view !== 'all' && !state.villages[state.view]) state.view = 'all';
+  const single = state.view !== 'all';
+  const tasks = allTasks();
+  renderTabs(); renderVillageHead(); renderSummary();
+  $('villageOnly').hidden = !single; $('plannerPanel').hidden = !single;
+  if (single) { renderBoosts(state.villages[state.view]); renderMods(state.villages[state.view]); renderPlanner(); }
+  $('groupCtl').hidden = !(state.view === 'all');
+  $('groupBy').value = state.groupBy; $('sortBy').value = state.sort;
+  $('timersTitle').textContent = single ? 'Upgrades in progress' : 'All upgrades in progress';
+  renderChips(tasks); renderTimers(tasks);
+}
+
+// Cheap per-second tick: only update countdown text.
+function tick() {
+  if (!villages().length) return;
+  const t = now();
+  document.querySelectorAll('[data-cd]').forEach(el => {
+    const fin = +el.dataset.cd;
+    if (fin) el.textContent = fin <= t ? el.dataset.done : fmtDur(fin - t);
+  });
+  if (Math.floor(t) % 30 === 0) render(); // keep order, boost states and "ago" labels fresh
+}
+
+// ---------- loading exports ----------
+function showPaste(on) {
+  $('pastePanel').hidden = !on;
+  $('cancelPaste').hidden = !villages().length;
+  $('err').textContent = '';
+  if (on) { $('raw').value = ''; $('raw').focus(); }
+}
+
+function loadRaw(raw) {
+  raw = raw.trim();
+  const next = parseExport(raw);
+  const tag = next.tag;
+  let v = state.villages[tag];
+  const isNew = !v;
+  if (v && next.ts < P(v).ts && !confirm(`This export of ${vname(v)} is older than the one loaded. Load it anyway?`)) return;
+  if (isNew) {
+    const used = new Set(villages().map(x => x.color));
+    v = state.villages[tag] = {
+      tag, nick: '', raw, boosts: [], exportKinds: {}, mods: { ...DEFAULT_MODS },
+      color: VILLAGE_COLORS.find(c => !used.has(c)) || VILLAGE_COLORS[villages().length % VILLAGE_COLORS.length],
+    };
+  }
+  v.raw = raw; v.updatedAt = now();
+  parsed[tag] = next;
+  // Boosts that ended before this export are already reflected in its timers.
+  // Boosts that started before it are reported by the export itself when it lists that queue, so drop ours to avoid double counting.
+  const covered = new Set(exportWindows(v).map(w => w.queue));
+  v.boosts = v.boosts.filter(b => b.start + HOUR > next.ts && !(b.start <= next.ts && covered.has(b.queue)));
+  state.view = tag;
+  save(); showPaste(false); render();
+  toast(`${isNew ? 'Added new village' : 'Updated'} ${vname(v)} · export ${fmtWhen(next.ts)} · ${next.tasks.length} upgrades running`);
+}
+
+$('loadBtn').onclick = () => {
+  try { loadRaw($('raw').value); }
+  catch (e) { $('err').textContent = 'Could not read that: ' + e.message; }
+};
+$('cancelPaste').onclick = () => showPaste(false);
+$('repaste').onclick = () => showPaste(true);
+
+// Cmd/Ctrl+V anywhere on the page (outside a text field) loads an export straight from the clipboard.
+document.addEventListener('paste', e => {
+  if (e.target.closest('textarea, input')) return;
+  const text = e.clipboardData.getData('text');
+  if (!text.trim().startsWith('{')) return;
+  e.preventDefault();
+  try { loadRaw(text); }
+  catch (err) { toast('Clipboard is not a valid export: ' + err.message, true); }
+});
+
+function toast(msg, bad) {
+  const el = $('toast');
+  el.textContent = msg; el.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.className = 'toast', 3500);
+}
+
+// ---------- interactions ----------
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-view],[data-add],[data-del],[data-filter],[data-rename],[data-nick],[data-remove]');
+  if (!el) return;
+  const v = state.villages[state.view];
+  if (el.dataset.view) {
+    state.view = el.dataset.view;
+  } else if (el.dataset.add && v) {
+    v.boosts.push({ id: uid(), queue: el.dataset.q, kind: el.dataset.add, start: Math.floor(now()) });
+  } else if (el.dataset.del && v) {
+    v.boosts = v.boosts.filter(b => b.id !== el.dataset.del);
+  } else if (el.dataset.filter) {
+    state.filter = el.dataset.filter;
+  } else if (el.dataset.rename) {
+    const k = el.dataset.rename;
+    const val = prompt('Name for this item (blank resets):', state.names[k] || el.textContent);
+    if (val === null) return;
+    if (val.trim()) state.names[k] = val.trim(); else delete state.names[k];
+  } else if (el.dataset.nick) {
+    const t = state.villages[el.dataset.nick];
+    const val = prompt(`Nickname for ${t.tag} (blank uses the tag):`, t.nick);
+    if (val === null) return;
+    t.nick = val.trim();
+  } else if (el.dataset.remove) {
+    const t = state.villages[el.dataset.remove];
+    if (!confirm(`Remove ${vname(t)} and its saved export? Pasting its export again brings it back.`)) return;
+    delete state.villages[t.tag]; delete parsed[t.tag]; state.view = 'all';
+  } else return;
+  save(); render();
+});
+
+document.addEventListener('change', e => {
+  const el = e.target, v = state.villages[state.view];
+  if (el.id === 'groupBy') state.groupBy = el.value;
+  else if (el.id === 'sortBy') state.sort = el.value;
+  else if (el.dataset.mod && v) v.mods[el.dataset.mod] = el.checked;
+  else if (el.dataset.exp && v) v.exportKinds[el.dataset.exp] = el.value;
+  else if (el.dataset.start && v) {
+    const b = v.boosts.find(b => b.id === el.dataset.start);
+    const t = new Date(el.value).getTime() / 1000;
+    if (b && t) b.start = t;
+  } else return;
+  save(); render();
+});
+['pq', 'pd', 'ph', 'pm'].forEach(id => $(id).addEventListener('input', renderPlanner));
+
+// ---------- boot ----------
+for (const v of villages()) {
+  try { P(v); } catch (e) { delete state.villages[v.tag]; }
+}
+render();
+if (villages().length) showPaste(false);
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
