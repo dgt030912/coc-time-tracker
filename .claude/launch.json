@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "coc-timer",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1"],
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=8765", "COOKIE_SECURE=0", "DATA_DIR=./data", "python3", "server.py"],
       "port": 8765
     }
   ]
