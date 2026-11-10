@@ -73,6 +73,15 @@ def load_user_data(user):
     return {'villages': d.get('villages', {}), 'names': d.get('names', {})}
 
 
+def app_version():
+    """Changes whenever a deploy changes the app page, so open tabs know to reload."""
+    h = hashlib.sha256()
+    for name in ('index.html', 'game-names.json'):
+        with open(os.path.join(ROOT, name), 'rb') as f:
+            h.update(f.read())
+    return h.hexdigest()[:12]
+
+
 # ---------- auth ----------
 def hash_password(password, salt_hex):
     return hashlib.pbkdf2_hmac('sha256', password.lower().encode(), bytes.fromhex(salt_hex), PBKDF2_ITER).hex()
@@ -220,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return self.err(401, 'Not signed in')
             if p == ['api', 'state']:
-                return self.send(200, load_user_data(user))
+                return self.send(200, {**load_user_data(user), 'version': app_version()})
             if p == ['api', 'me']:
                 users = read_json(data_path('users.json'), {})
                 return self.send(200, {'user': user, 'display': users.get(user, {}).get('display', user)})

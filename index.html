@@ -157,6 +157,10 @@
   }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
   .toast.bad { border-color: var(--danger); }
+  .sync { font-size: 12px; color: var(--muted); }
+  .sync.ok::before { content: '● '; color: var(--done); }
+  .sync.bad { color: var(--danger); cursor: help; }
+  .sync.bad::before { content: '● '; }
   @media (max-width: 640px) {
     .brow { grid-template-columns: 1fr; }
     .bc { justify-content: flex-start; }
@@ -174,7 +178,8 @@
     <h1>Village <span>Upgrade Timers</span></h1>
     <div class="row">
       <span class="meta" id="meta"></span>
-      <button class="ghost" id="repaste" hidden>Paste export</button>
+      <span class="sync" id="sync"></span>
+      <button class="ghost" id="repaste">Paste export</button>
       <span class="meta" id="who"></span>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -326,15 +331,39 @@ async function api(method, url, body) {
     return await r.json();
   } finally { pending--; }
 }
-const warnFail = e => toast('Not saved: ' + e.message, true);
-function syncVillage(v) { v.updatedAt = now(); api('PUT', `/api/villages/${encodeURIComponent(v.tag)}`, v).catch(warnFail); }
-function syncRemove(tag) { api('DELETE', `/api/villages/${encodeURIComponent(tag)}`).catch(warnFail); }
+// Every change is written to the server; the header shows whether it landed.
+let writes = 0, lastSyncError = '';
+function setSync() {
+  const el = $('sync');
+  if (writes) { el.textContent = 'Saving…'; el.className = 'sync'; }
+  else if (lastSyncError) { el.textContent = 'Not saved'; el.title = lastSyncError; el.className = 'sync bad'; }
+  else { el.textContent = 'Saved to account'; el.title = 'Everything is stored on the server and shows on every device'; el.className = 'sync ok'; }
+}
+function write(method, url, body) {
+  writes++; setSync();
+  return api(method, url, body)
+    .then(() => { lastSyncError = ''; })
+    .catch(e => { lastSyncError = e.message; toast('Not saved: ' + e.message, true); })
+    .finally(() => { writes--; setSync(); });
+}
+function syncVillage(v) { v.updatedAt = now(); return write('PUT', `/api/villages/${encodeURIComponent(v.tag)}`, v); }
+function syncRemove(tag) { return write('DELETE', `/api/villages/${encodeURIComponent(tag)}`); }
 function syncName(k, val) {
-  (val ? api('PUT', `/api/names/${encodeURIComponent(k)}`, { name: val }) : api('DELETE', `/api/names/${encodeURIComponent(k)}`)).catch(warnFail);
+  return val ? write('PUT', `/api/names/${encodeURIComponent(k)}`, { name: val }) : write('DELETE', `/api/names/${encodeURIComponent(k)}`);
+}
+
+// The server reports which build of the app it runs; a tab left open across a deploy reloads itself
+// so no device keeps running old code.
+let appVersion = null;
+function checkVersion(v) {
+  if (!v) return;
+  if (appVersion && v !== appVersion && !writes) { location.reload(); return; }
+  appVersion = v;
 }
 
 async function pull() {
   const d = await api('GET', '/api/state');
+  checkVersion(d.version);
   state.villages = d.villages || {};
   state.names = d.names || {};
   parsed = {};
@@ -364,19 +393,29 @@ function normalizeVillage(v) {
   return true;
 }
 
-// Data saved in this browser by the pre-login version gets uploaded once, if the account has none yet.
+// Villages the pre-login version saved only in this browser get merged into the account: any village
+// the account doesn't have, or has an older export of, is uploaded. Runs on every sign-in until done.
 async function migrateLocal() {
-  if (villages().length) return;
   let old;
   try { old = JSON.parse(localStorage.getItem('coc-timers-v2')); } catch (e) {}
-  if (!old || !old.villages || !Object.keys(old.villages).length) return;
+  if (!old || !old.villages) return;
+  const exportTs = v => { try { return parseExport(v.raw).ts; } catch (e) { return -1; } };
+  let moved = 0, failed = 0;
   for (const v of Object.values(old.villages)) {
-    await api('PUT', `/api/villages/${encodeURIComponent(v.tag)}`, v).catch(() => {});
+    if (!v || !v.tag || exportTs(v) < 0) continue;
+    const mine = state.villages[v.tag];
+    if (mine && exportTs(mine) >= exportTs(v)) continue;
+    try { await api('PUT', `/api/villages/${encodeURIComponent(v.tag)}`, v); moved++; } catch (e) { failed++; }
   }
-  for (const [k, n] of Object.entries(old.names || {})) await api('PUT', `/api/names/${encodeURIComponent(k)}`, { name: n }).catch(() => {});
+  for (const [k, n] of Object.entries(old.names || {})) {
+    if (!state.names[k]) await api('PUT', `/api/names/${encodeURIComponent(k)}`, { name: n }).catch(() => { failed++; });
+  }
+  if (failed) { toast(`Could not move ${failed} item(s) saved in this browser; will retry next time`, true); return; }
   try { localStorage.removeItem('coc-timers-v2'); } catch (e) {}
-  await pull();
-  toast(`Moved ${villages().length} village(s) saved in this browser to your account`);
+  if (moved) {
+    await pull();
+    toast(`Added ${moved} village${moved > 1 ? 's' : ''} saved in this browser to your account`);
+  }
 }
 
 // ---------- parsing ----------
@@ -549,8 +588,7 @@ function sortTasks(list) {
 // ---------- render ----------
 function renderHeader() {
   const vs = villages();
-  $('meta').textContent = vs.length ? `${vs.length} village${vs.length > 1 ? 's' : ''} · ⌘V anywhere to paste an export` : '';
-  $('repaste').hidden = !vs.length;
+  $('meta').textContent = `${vs.length} village${vs.length === 1 ? '' : 's'} · ⌘V anywhere to paste an export`;
 }
 
 function villageNext(v) {
@@ -697,7 +735,11 @@ function renderTimers(tasks) {
   const multi = state.view === 'all' && villages().length > 1;
   let list = state.filter === 'all' ? tasks : tasks.filter(t => t.queue === state.filter);
   list = sortTasks(list);
-  if (!list.length) { $('timers').innerHTML = '<div class="empty">Nothing upgrading.</div>'; return; }
+  if (!list.length) {
+    $('timers').innerHTML = villages().length ? '<div class="empty">Nothing upgrading.</div>'
+      : '<div class="empty">No villages in your account yet. Copy an export from the game and press ⌘V here, or use <b>Paste export</b> at the top. It saves to your account, so every device you sign in on will see it.</div>';
+    return;
+  }
 
   const group = state.view === 'all' ? state.groupBy : (state.groupBy === 'queue' ? 'queue' : 'none');
   if (group === 'none') { $('timers').innerHTML = list.map(x => timerRow(x, multi)).join(''); return; }
@@ -743,9 +785,8 @@ function renderPlanner() {
 
 function render() {
   renderHeader();
-  const vs = villages();
-  $('app').hidden = !vs.length;
-  if (!vs.length) { showPaste(true); return; }
+  // The hub always shows, even with no villages yet; pasting is never forced.
+  $('app').hidden = false;
   if (state.view !== 'all' && !state.villages[state.view]) state.view = 'all';
   const single = state.view !== 'all';
   // keep focus/typing in a boost input across re-renders
@@ -780,7 +821,7 @@ function tick() {
 // ---------- loading exports ----------
 function showPaste(on) {
   $('pastePanel').hidden = !on;
-  $('cancelPaste').hidden = !villages().length;
+  $('cancelPaste').hidden = false;
   $('err').textContent = '';
   if (on) { $('raw').value = ''; $('raw').focus(); }
 }
@@ -948,8 +989,8 @@ setInterval(refresh, 60000);
     if (e.message === 'Signed out') return;
     toast('Could not load your villages: ' + e.message, true);
   }
+  setSync();
   render();
-  if (villages().length) showPaste(false);
   setInterval(tick, 1000);
 })();
 </script>
